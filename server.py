@@ -16,7 +16,6 @@ def connectionLoop(sock):
       data, addr = sock.recvfrom(1024)
       data = str(data)
       data = data[2:-1]
-      print(data)
       if addr in clients:
          if 'heartbeat' in data:
             clients[addr]['lastBeat'] = datetime.now()
@@ -52,7 +51,6 @@ def cleanClients(sock):
       flag = False
       for c in list(clients.keys()):
          if (datetime.now() - clients[c]['lastBeat']).total_seconds() > 5:
-            print('Dropped Client: ', c)
             flag = True
             player = {}
             player['id'] = str(c)
@@ -71,7 +69,6 @@ def gameLoop(sock):
    while True:
       GameState = {"cmd": 1, "players": []}
       clients_lock.acquire()
-      print (clients)
       for c in clients:
          player = {}
          clients[c]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
@@ -80,8 +77,8 @@ def gameLoop(sock):
          player['position'] = clients[c]['position']
          player['rotation'] = clients[c]['rotation']
          GameState['players'].append(player)
+         print(clients[c]['color'])
       s=json.dumps(GameState)
-      print(s)
       for c in clients:
          sock.sendto(bytes(s,'utf8'), (c[0],c[1]))
       clients_lock.release()
