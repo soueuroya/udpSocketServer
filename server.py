@@ -27,7 +27,7 @@ def connectionLoop(sock):
          if 'connect' in data:
             clients[addr] = {}
             clients[addr]['lastBeat'] = datetime.now()
-            clients[addr]['color'] = 0
+            clients[addr]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
             clients[addr]['position'] = 0
             clients[addr]['rotation'] = 0
             message = {"cmd": 0,"player":[{"id":str(addr)}]}
@@ -63,7 +63,6 @@ def cleanClients(sock):
       if flag:
          for c in clients:
             sock.sendto(bytes(nm,'utf8'), (c[0],c[1]))
-            clients[c]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
       time.sleep(1)
 
 def gameLoop(sock):
