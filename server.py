@@ -63,6 +63,7 @@ def cleanClients(sock):
       if flag:
          for c in clients:
             sock.sendto(bytes(nm,'utf8'), (c[0],c[1]))
+            clients[c]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
       time.sleep(1)
 
 def gameLoop(sock):
@@ -71,7 +72,7 @@ def gameLoop(sock):
       clients_lock.acquire()
       for c in clients:
          player = {}
-         clients[c]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
+         
          player['id'] = str(c)
          player['color'] = clients[c]['color']
          player['position'] = clients[c]['position']
