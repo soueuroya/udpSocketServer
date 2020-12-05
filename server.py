@@ -6,106 +6,181 @@ import threading
 from datetime import datetime
 import json
 
+########################
+""" GLOBALS """
+########################
+# creating a lock for shared threads https://realpython.com/intro-to-python-threading/#working-with-many-threads
 clients_lock = threading.Lock()
+# num of connected clients
 connected = 0
-
+# a dictionary that will store our clients indexed by their (IP, PORT)
 clients = {}
+
+########################
+""" METHODS """
+########################
+
+
 def connectionLoop(sock):
-   while True:
-      data, addr = sock.recvfrom(1024)
-      dataString = str(data)
-      
-      #Send a list of the players connected
-      PlayersInGameList = {"cmd": 3, "players": []} 
-      if addr in clients:
-         if 'heartbeat' in dataString:
-            clients[addr]['lastBeat'] = datetime.now()
-         else:#hope this works.
-            otherData = json.loads(data)#get the data then store it below in client dict.
-            clients[addr]['position'] = otherData['position']
+    """
+    Takes care of:
+      1. Updating the heartbeat of an existing client
+      2. Connecting a new client 
+    """
+    while True:
+        # Listen to the next message
+        data, addr = sock.recvfrom(1024)
+        data = str(data)
+        print("Got this: " + data)
+        # if addr (i.e IP,PORT) exists in clients dictionary
+        if addr in clients:
+            # update the heartbeat value if data dictionary has a key called 'heartbeat'
+            if 'heartbeat' in data:
+                clients[addr]['lastBeat'] = datetime.now()
+                if 'position' in data:
+                    clients[addr]['position'] = data['position']
+        else:
+            # if there is a key called 'connect' in data dictionary
+            if 'connect' in data:
+                # add a new object to the client dictionary
+                clients[addr] = {}
+                # update the last beat of the client object
+                clients[addr]['lastBeat'] = datetime.now()
+                # add a field called color
+                clients[addr]['position'] = 0
+                # create a message object with a command value and an array of player objects
+                message = {"cmd": 0, "players": []}  # {"id":addr}}
 
-      else:
-         if 'connect' in dataString:
-            clients[addr] = {}
-            clients[addr]['lastBeat'] = datetime.now()
-            clients[addr]['color'] = 0
-            #add position to this dictionary
-            clients[addr]['position'] = 0
-            #get this connected players id
-            message = {"cmd": 0,"player":{"id":str(addr)}}
-            m = json.dumps(message)
-            for c in clients:
-               #send the players id to all players in clients.
-               sock.sendto(bytes(m,'utf8'), (c[0],c[1]))
-             
-               #we need to set the players id in the player dict
-               player = {}#set the new player list
-               player['id'] = str(c)#
-               #and also append this new player to the list of existing players
-               PlayersInGameList['players'].append(player)
+                # create a new object
+                p = {}
+                # add a field called 'id' that is the string version of (IP, PORT)
+                p['id'] = str(addr)
+                # create a field called color/ changed to position
+                p['position'] = 0
+                # add the object to the player array
+                message['players'].append(p)
 
-            #while running through addr in clients, (line 19)
-            #Create a json dump of our made list of players in the game above
-            #and send it to everyone in clients.
-            sock.sendto(bytes(json.dumps(PlayersInGameList), 'utf8'), (addr[0],addr[1]))
+                # create a new gamestate object similar to message
+                GameState = {"cmd": 4, "players": []}
+                # for every key of clients
+                for c in clients:
+                    # if the key is the same as the connected player
+                    if (c == addr):
+                        # change command to 3
+                        message['cmd'] = 3
+                    else:
+                        message['cmd'] = 0
+
+                    # create a JSON string.
+                    # google what the separator function does. Why do we use it here? Its not always needed.
+                    m = json.dumps(message, separators=(",", ":"))
+
+                    # create a new player object
+                    player = {}
+                    # set the id to the current key
+                    player['id'] = str(c)
+                    # set the color to the key's properties
+                    player['position'] = clients[c]['position']
+                    # add it to the game state
+                    GameState['players'].append(player)
+                    # send the message object containg the new connected client to the previously connected clients
+                    sock.sendto(bytes(m, 'utf8'), (c[0], c[1]))
+
+                # send the game state to the new client
+                m = json.dumps(GameState)
+                sock.sendto(bytes(m, 'utf8'), addr)
 
 
 def cleanClients(sock):
-   while True:
-      #a little more straight forward, loop through all the clients,
-      #check for a disconnect, while in that loop, if a disconnection occurs,
-      #loop through all clients and notify them.
-      for c in list(clients.keys()):
-         if (datetime.now() - clients[c]['lastBeat']).total_seconds() > 5:
-            print('Dropped Client: ', c)
-             
-           
-            for cl in list(clients.keys()):
-               dmessage = {"cmd": 2, "id":str(c)}
-               m = json.dumps(dmessage)
-               sock.sendto(bytes(m,'utf8'), (cl[0],cl[1]))
-            clients_lock.acquire() 
-            del clients[c]
-            clients_lock.release()   
-      time.sleep(1)
+    """
+      Takes care of:
+         1. Checking if a client should be dropped
+         2. Letting the clients know of a drop
+    """
+    while True:
+        # create an array
+        droppedClients = []
+        # for every client in keys
+        # How is this different from what we did in line 67? Try and find out.
+        for c in list(clients.keys()):
+            # Check if its been longer than 5 seconds since the last heartbeat
+            if (datetime.now() - clients[c]['lastBeat']).total_seconds() > 5:
+                print('Dropped Client: ', c)
+                # for thread safety, gain the lock
+                clients_lock.acquire()
+                # delete the client identified by c
+                del clients[c]
+                # releast the lock we have
+                clients_lock.release()
+                # add the dropped client key to the array of dropped clients
+                droppedClients.append(str(c))
+
+        # Send a JSON object with list of dropped clients to all connected clients
+        message = {"cmd": 2, "droppedPlayers": droppedClients}
+        m = json.dumps(message, separators=(",", ":"))
+
+        if (len(droppedClients) > 0):
+            for c in clients:
+                sock.sendto(bytes(m, 'utf8'), (c[0], c[1]))
+
+        time.sleep(1)
+
 
 def gameLoop(sock):
-   while True:
-      GameState = {"cmd": 1, "players": []}
-      clients_lock.acquire()
-      #print (clients) remove this because its annoying and why would u need
-      #all this data every couple of seconds......
-      for c in clients:
-         player = {}
-         clients[c]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
-         #leave color in, might as well. 
-         #but add position by copying the player position to client position
-         #because convoluted = good?
-         player['position'] = clients[c]['position']
-         player['id'] = str(c)
-         player['color'] = clients[c]['color']
-         GameState['players'].append(player)
-      s=json.dumps(GameState)
-      #print(s)
-      for c in clients:
-         sock.sendto(bytes(s,'utf8'), (c[0],c[1]))
-      clients_lock.release()
+    """
+      Takes care of:
+         1. Assigning a random color to every client
+         2. Send the state to all clients
+    """
 
-      
-      time.sleep(.03)
+    pktID = 0  # just to identify a particular network packet while debugging
+    while True:
+        print("Boop")
+        # create a game state object
+        GameState = {"cmd": 1, "pktID": pktID, "players": []}
+        clients_lock.acquire()
+        #      print (clients)
+        for c in clients:
+            # create a player object
+            player = {}
+            # assign a random color
+            #clients[c]['color'] = { "R": random.random(),"G": random.random(),"B": random.random()
+            #}
+            # fill the player details
+            player['id'] = str(c)
+            player['position'] = clients[c]['position']
+            GameState['players'].append(player)
+        s = json.dumps(GameState, separators=(",", ":"))
+        #      print(s)
+        # send the gamestate json to all clients
+        for c in clients:
+            sock.sendto(bytes(s, 'utf8'), (c[0], c[1]))
+        clients_lock.release()
+        if (len(clients) > 0):
+            pktID = pktID + 1
+        time.sleep(1)
+
+
+########################
+""" ENTRY """
+########################
+
 
 def main():
-   port = 12345
-  
-   s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-   s.bind(('', port))
-   start_new_thread(gameLoop, (s,))
-   start_new_thread(connectionLoop, (s,))
-   start_new_thread(cleanClients,(s,))
-   while True:
-      time.sleep(1)
-      
+    print("Running server")
+    """
+      Start 3 new threads 
+    """
+    port = 12345
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(('', port))
+    start_new_thread(gameLoop, (s, ))
+    start_new_thread(connectionLoop, (s, ))
+    start_new_thread(cleanClients, (s, ))
+    # keep the main thread alive so the children threads stay alive
+    while True:
+        time.sleep(1)
 
 
 if __name__ == '__main__':
-   main()
+    main()
