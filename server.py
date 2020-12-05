@@ -90,7 +90,7 @@ def gameLoop(sock):
 def main():
    port = 12345
    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-   s.bind(('', port))
+   s.bind(('18.191.250.230', port))
    start_new_thread(gameLoop, (s,))
    start_new_thread(connectionLoop, (s,))
    start_new_thread(cleanClients,(s,))
