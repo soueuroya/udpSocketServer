@@ -23,7 +23,10 @@ def connectionLoop(sock):
          if 'position' in data:
             info = json.loads(data)
             clients[addr]['position'] = info['position']
+         if 'rotation' in data:
+            info = json.loads(data)
             clients[addr]['rotation'] = info['rotation']
+            clients[addr]['position'] = info['position']
       else:
          if 'connect' in data:
             clients[addr] = {}
