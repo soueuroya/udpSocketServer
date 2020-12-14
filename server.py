@@ -86,7 +86,7 @@ def gameLoop(sock):
       s=json.dumps(GameState)
       print(s)
       for c in clients:
-         sock.sendto(bytes(s,'utf8'), (c[0],c[1],c[2]))
+         sock.sendto(bytes(s,'utf8'), (c[0],c[1]))
       clients_lock.release()
       time.sleep(0.033)
 
